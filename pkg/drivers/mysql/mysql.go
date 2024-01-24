@@ -28,7 +28,7 @@ var (
 		`CREATE TABLE IF NOT EXISTS kine
 			(
 				id INTEGER AUTO_INCREMENT,
-				name VARCHAR(630) CHARACTER SET ascii,
+				name VARCHAR(630),
 				created INTEGER,
 				deleted INTEGER,
 				create_revision INTEGER,
