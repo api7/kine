@@ -2,7 +2,6 @@ package logstructured
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -454,7 +453,7 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 			wr.CompactRevision = compact
 			wr.CurrentRevision = rev
 		} else {
-			errorc <- errors.New("failed to execute query in database")
+			errorc <- server.ErrGRPCUnhealthy
 		}
 		cancel()
 	}
