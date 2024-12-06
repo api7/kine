@@ -442,7 +442,8 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 	}
 
 	result := make(chan []*server.Event, 100)
-	wr := server.WatchResult{Events: result}
+	errorc := make(chan error, 1)
+	wr := server.WatchResult{Events: result, Errorc: errorc}
 
 	rev, kvs, err := l.log.After(ctx, prefix, revision, 0)
 	if err != nil {
@@ -451,6 +452,8 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 			compact, _ := l.log.CompactRevision(ctx)
 			wr.CompactRevision = compact
 			wr.CurrentRevision = rev
+		} else {
+			errorc <- server.ErrGRPCUnhealthy
 		}
 		cancel()
 	}
