@@ -75,7 +75,8 @@ type TranslateErr func(error) error
 type ErrCode func(error) string
 
 type ConnectionPoolConfig struct {
-	MaxIdle     int           // zero means defaultMaxIdleConns; negative means 0
+	MaxIdle     int // zero means defaultMaxIdleConns; negative means 0
+	MaxIdleTime time.Duration
 	MaxOpen     int           // <= 0 means unlimited
 	MaxLifetime time.Duration // maximum amount of time a connection may be reused
 }
@@ -158,8 +159,9 @@ func configureConnectionPooling(connPoolConfig ConnectionPoolConfig, db *sql.DB,
 		connPoolConfig.MaxIdle = defaultMaxIdleConns
 	}
 
-	logrus.Infof("Configuring %s database connection pooling: maxIdleConns=%d, maxOpenConns=%d, connMaxLifetime=%s", driverName, connPoolConfig.MaxIdle, connPoolConfig.MaxOpen, connPoolConfig.MaxLifetime)
+	logrus.Infof("Configuring %s database connection pooling: maxIdleConns=%d, connMaxIdleTime=%s, maxOpenConns=%d, connMaxLifetime=%s", driverName, connPoolConfig.MaxIdle, connPoolConfig.MaxIdleTime, connPoolConfig.MaxOpen, connPoolConfig.MaxLifetime)
 	db.SetMaxIdleConns(connPoolConfig.MaxIdle)
+	db.SetConnMaxIdleTime(connPoolConfig.MaxIdleTime)
 	db.SetMaxOpenConns(connPoolConfig.MaxOpen)
 	db.SetConnMaxLifetime(connPoolConfig.MaxLifetime)
 }
