@@ -62,6 +62,12 @@ func main() {
 			Destination: &config.ConnectionPoolConfig.MaxIdle,
 			Value:       0,
 		},
+		cli.DurationFlag{
+			Name:        "datastore-connection-max-idletime",
+			Usage:       "Maximum amount of time a connection may be idle before being closed. If value <= 0, then there is no limit.",
+			Destination: &config.ConnectionPoolConfig.MaxIdleTime,
+			Value:       0,
+		},
 		cli.IntFlag{
 			Name:        "datastore-max-open-connections",
 			Usage:       "Maximum number of open connections used by datastore. If value <= 0, then there is no limit",
