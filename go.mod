@@ -99,4 +99,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace 172.19.16.246/cmcc/driver/panweidb-go-pq => /home/nic/GolandProjects/panweidb-go-pq-master
+replace 172.19.16.246/cmcc/driver/panweidb-go-pq => github.com/api7/panweidb-go-pq v0.0.0-20251201095938-9898697e7b7a
