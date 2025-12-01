@@ -3,6 +3,7 @@ module github.com/k3s-io/kine
 go 1.19
 
 require (
+	172.19.16.246/cmcc/driver/panweidb-go-pq v0.0.0-00010101000000-000000000000
 	github.com/Rican7/retry v0.1.0
 	github.com/canonical/go-dqlite v1.5.1
 	github.com/go-sql-driver/mysql v1.7.1
@@ -65,6 +66,7 @@ require (
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20201229170055-e5319fda7802 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
@@ -86,6 +88,7 @@ require (
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.4.0 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
@@ -95,3 +98,5 @@ require (
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace 172.19.16.246/cmcc/driver/panweidb-go-pq => /home/nic/GolandProjects/panweidb-go-pq-master
