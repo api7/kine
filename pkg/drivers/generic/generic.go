@@ -49,7 +49,7 @@ var (
 				ikv.name = ? AND
 				ikv.id <= ?)`
 
-	listSQL = fmt.Sprintf(`
+	genericListSQL = fmt.Sprintf(`
 		SELECT *
 		FROM (
 			SELECT (%s), (%s), %s
@@ -65,6 +65,26 @@ var (
 			WHERE
 				kv.deleted = 0 OR
 				?
+		) AS lkv
+		ORDER BY lkv.theid ASC
+		`, revSQL, compactRevSQL, columns)
+
+	panweiListSQL = fmt.Sprintf(`
+		SELECT *
+		FROM (
+			SELECT (%s), (%s), %s
+			FROM kine AS kv
+			JOIN (
+				SELECT MAX(mkv.id) AS id
+				FROM kine AS mkv
+				WHERE
+					mkv.name LIKE ?
+					%%s
+				GROUP BY mkv.name) AS maxkv
+				ON maxkv.id = kv.id
+			WHERE
+				kv.deleted = 0 OR
+				?::boolean
 		) AS lkv
 		ORDER BY lkv.theid ASC
 		`, revSQL, compactRevSQL, columns)
@@ -206,6 +226,11 @@ func Open(ctx context.Context, driverName, dataSourceName string, connPoolConfig
 
 	if metricsRegisterer != nil {
 		metricsRegisterer.MustRegister(collectors.NewDBStatsCollector(db, "kine"))
+	}
+
+	listSQL := genericListSQL
+	if driverName == "panweidb" {
+		listSQL = panweiListSQL
 	}
 
 	return &Generic{
