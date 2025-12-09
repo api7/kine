@@ -93,6 +93,7 @@ var (
 type ErrRetry func(error) bool
 type TranslateErr func(error) error
 type ErrCode func(error) string
+type LimitSQL func(sql string, limit int64) string
 
 type ConnectionPoolConfig struct {
 	MaxIdle     int // zero means defaultMaxIdleConns; negative means 0
@@ -127,6 +128,7 @@ type Generic struct {
 	TranslateErr          TranslateErr
 	ErrCode               ErrCode
 	FillRetryDuration     time.Duration
+	LimitSQL              LimitSQL
 }
 
 func q(sql, param string, numbered bool) string {
@@ -366,7 +368,7 @@ func (d *Generic) DeleteRevision(ctx context.Context, revision int64) error {
 func (d *Generic) ListCurrent(ctx context.Context, prefix string, limit int64, includeDeleted bool) (*sql.Rows, error) {
 	sql := d.GetCurrentSQL
 	if limit > 0 {
-		sql = fmt.Sprintf("%s LIMIT %d", sql, limit)
+		sql = d.applyLimit(sql, limit)
 	}
 	return d.query(ctx, sql, prefix, includeDeleted)
 }
@@ -375,14 +377,14 @@ func (d *Generic) List(ctx context.Context, prefix, startKey string, limit, revi
 	if startKey == "" {
 		sql := d.ListRevisionStartSQL
 		if limit > 0 {
-			sql = fmt.Sprintf("%s LIMIT %d", sql, limit)
+			sql = d.applyLimit(sql, limit)
 		}
 		return d.query(ctx, sql, prefix, revision, includeDeleted)
 	}
 
 	sql := d.GetRevisionAfterSQL
 	if limit > 0 {
-		sql = fmt.Sprintf("%s LIMIT %d", sql, limit)
+		sql = d.applyLimit(sql, limit)
 	}
 	return d.query(ctx, sql, prefix, revision, startKey, revision, includeDeleted)
 }
@@ -411,9 +413,18 @@ func (d *Generic) CurrentRevision(ctx context.Context) (int64, error) {
 func (d *Generic) After(ctx context.Context, prefix string, rev, limit int64) (*sql.Rows, error) {
 	sql := d.AfterSQL
 	if limit > 0 {
-		sql = fmt.Sprintf("%s LIMIT %d", sql, limit)
+		sql = d.applyLimit(sql, limit)
 	}
 	return d.query(ctx, sql, prefix, rev)
+}
+
+// applyLimit applies database-specific LIMIT clause to SQL query
+func (d *Generic) applyLimit(sql string, limit int64) string {
+	if d.LimitSQL != nil {
+		return d.LimitSQL(sql, limit)
+	}
+	// Default to standard LIMIT syntax
+	return fmt.Sprintf("%s LIMIT %d", sql, limit)
 }
 
 func (d *Generic) Fill(ctx context.Context, revision int64) error {
