@@ -25,6 +25,67 @@ const (
 	defaultDSN = "sqlserver://sa@localhost:1433?database=kubernetes"
 )
 
+// MSSQL-specific SQL templates
+// MSSQL requires complete boolean expressions (e.g., "1 = @p2" instead of just "@p2")
+// and doesn't allow ORDER BY in subqueries without TOP/OFFSET
+var (
+	columns = "kv.id AS theid, kv.name, kv.created, kv.deleted, kv.create_revision, kv.prev_revision, kv.lease, kv.value, kv.old_value"
+
+	// MSSQL requires explicit column aliases for scalar subqueries in derived tables
+	// The alias must be specified at the outer SELECT level, not inside the subquery
+	revSQL = `SELECT MAX(rkv.id) FROM kine AS rkv`
+
+	compactRevSQL = `SELECT MAX(crkv.prev_revision) FROM kine AS crkv WHERE crkv.name = 'compact_rev_key'`
+
+	// MSSQL-specific list SQL with proper boolean expression (1 = @pX instead of just @pX)
+	// The %s placeholder is for additional conditions like "AND mkv.id <= @pX"
+	// CRITICAL: Each column in the derived table must have an explicit alias at the outer level
+	mssqlListSQL = fmt.Sprintf(`
+		SELECT *
+		FROM (
+			SELECT (%s) AS id, (%s) AS compact_revision, %s
+			FROM kine AS kv
+			JOIN (
+				SELECT MAX(mkv.id) AS id
+				FROM kine AS mkv
+				WHERE
+					mkv.name LIKE @p1
+					%%s
+				GROUP BY mkv.name) AS maxkv
+				ON maxkv.id = kv.id
+			WHERE
+				kv.deleted = 0 OR 1 = @p2
+		) AS lkv
+		ORDER BY lkv.theid ASC
+		`, revSQL, compactRevSQL, columns)
+
+	// For CountSQL, we need to remove ORDER BY from the subquery
+	// MSSQL doesn't allow ORDER BY in subqueries unless TOP/OFFSET is used
+	mssqlCountInnerSQL = fmt.Sprintf(`
+		SELECT (%s) AS id, (%s) AS compact_revision, %s
+		FROM kine AS kv
+		JOIN (
+			SELECT MAX(mkv.id) AS id
+			FROM kine AS mkv
+			WHERE
+				mkv.name LIKE @p1
+			GROUP BY mkv.name) AS maxkv
+			ON maxkv.id = kv.id
+		WHERE
+			kv.deleted = 0 OR 1 = @p2
+		`, revSQL, compactRevSQL, columns)
+
+	mssqlIdOfKey = `
+		AND
+		mkv.id <= @p3 AND
+		mkv.id > (
+			SELECT MAX(ikv.id) AS id
+			FROM kine AS ikv
+			WHERE
+				ikv.name = @p4 AND
+				ikv.id <= @p5)`
+)
+
 var (
 	schema = []string{
 		`IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='kine' AND xtype='U')
@@ -69,6 +130,30 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	}
 
 	dialect.LastInsertID = false
+
+	// Override SQL statements with MSSQL-specific versions
+	// MSSQL requires complete boolean expressions (1 = @p2 instead of just @p2)
+	dialect.GetCurrentSQL = fmt.Sprintf(mssqlListSQL, "")
+	dialect.ListRevisionStartSQL = fmt.Sprintf(mssqlListSQL, "AND mkv.id <= @p3")
+	dialect.GetRevisionAfterSQL = fmt.Sprintf(mssqlListSQL, mssqlIdOfKey)
+
+	// CountSQL: MSSQL doesn't allow ORDER BY in subqueries without TOP/OFFSET
+	// Also requires explicit column alias for the scalar subquery
+	dialect.CountSQL = fmt.Sprintf(`
+		SELECT (%s) AS id, COUNT(c.theid)
+		FROM (
+			%s
+		) c`, revSQL, mssqlCountInnerSQL)
+
+	// AfterSQL: MSSQL requires explicit column aliases for scalar subqueries
+	dialect.AfterSQL = fmt.Sprintf(`
+		SELECT (%s) AS id, (%s) AS compact_revision, %s
+		FROM kine AS kv
+		WHERE
+			kv.name LIKE @p1 AND
+			kv.id > @p2
+		ORDER BY kv.id ASC`, revSQL, compactRevSQL, columns)
+
 	dialect.GetSizeSQL = `
 		SELECT SUM(reserved_page_count) * 8 * 1024
 		FROM sys.dm_db_partition_stats
