@@ -156,7 +156,20 @@ wait-for-db-connection() {
         echo 'DB_CONNECTION_TEST is not defined' >&2
         return 1
     fi
-    while ! eval "$DB_CONNECTION_TEST"; do
+
+    while true; do
+        if [ "$DB_USE_EVAL" = "true" ]; then
+            # fix mssql error: Sqlcmd: '1'': Unexpected argument. Enter '-?' for help.
+            eval "$DB_CONNECTION_TEST" >/dev/null 2>&1
+        else
+            $DB_CONNECTION_TEST >/dev/null 2>&1
+        fi
+
+        if [ $? -eq 0 ]; then
+            echo "Database is up!" >&2
+            return 0
+        fi
+
         echo 'Waiting for database to become available...' >&2
         sleep 5
     done
