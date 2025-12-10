@@ -26,7 +26,6 @@ const (
 )
 
 // MSSQL-specific SQL templates
-// MSSQL requires complete boolean expressions (e.g., "1 = @p2" instead of just "@p2")
 // and doesn't allow ORDER BY in subqueries without TOP/OFFSET
 var (
 	columns = "kv.id AS theid, kv.name, kv.created, kv.deleted, kv.create_revision, kv.prev_revision, kv.lease, kv.value, kv.old_value"
@@ -37,9 +36,8 @@ var (
 
 	compactRevSQL = `SELECT MAX(crkv.prev_revision) FROM kine AS crkv WHERE crkv.name = 'compact_rev_key'`
 
-	// MSSQL-specific list SQL with proper boolean expression (1 = @pX instead of just @pX)
-	// The %s placeholder is for additional conditions like "AND mkv.id <= @pX"
-	// CRITICAL: Each column in the derived table must have an explicit alias at the outer level
+	// The %s placeholder is for additional conditions like "AND mkv.id <= ?"
+	// Parameter order matches generic.go: prefix, [revision], [startKey, revision], includeDeleted
 	mssqlListSQL = fmt.Sprintf(`
 		SELECT *
 		FROM (
@@ -49,12 +47,12 @@ var (
 				SELECT MAX(mkv.id) AS id
 				FROM kine AS mkv
 				WHERE
-					mkv.name LIKE @p1
+					mkv.name LIKE ?
 					%%s
 				GROUP BY mkv.name) AS maxkv
 				ON maxkv.id = kv.id
 			WHERE
-				kv.deleted = 0 OR 1 = @p2
+				? = 1 OR kv.deleted = 0
 		) AS lkv
 		ORDER BY lkv.theid ASC
 		`, revSQL, compactRevSQL, columns)
@@ -68,22 +66,22 @@ var (
 			SELECT MAX(mkv.id) AS id
 			FROM kine AS mkv
 			WHERE
-				mkv.name LIKE @p1
+				mkv.name LIKE ?
 			GROUP BY mkv.name) AS maxkv
 			ON maxkv.id = kv.id
 		WHERE
-			kv.deleted = 0 OR 1 = @p2
+			? = 1 OR kv.deleted = 0
 		`, revSQL, compactRevSQL, columns)
 
 	mssqlIdOfKey = `
 		AND
-		mkv.id <= @p3 AND
+		mkv.id <= ? AND
 		mkv.id > (
 			SELECT MAX(ikv.id) AS id
 			FROM kine AS ikv
 			WHERE
-				ikv.name = @p4 AND
-				ikv.id <= @p5)`
+				ikv.name = ? AND
+				ikv.id <= ?)`
 )
 
 var (
@@ -114,6 +112,22 @@ var (
 	createDB = "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '%s') CREATE DATABASE [%s]"
 )
 
+// q replaces ? placeholders with numbered @p1, @p2... parameters for MSSQL
+func q(sql string) string {
+	n := 0
+	result := make([]byte, 0, len(sql))
+	for i := 0; i < len(sql); i++ {
+		if sql[i] == '?' {
+			n++
+			result = append(result, "@p"...)
+			result = append(result, strconv.Itoa(n)...)
+		} else {
+			result = append(result, sql[i])
+		}
+	}
+	return string(result)
+}
+
 func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
 	parsedDSN, err := prepareDSN(dataSourceName, tlsInfo)
 	if err != nil {
@@ -132,33 +146,33 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	dialect.LastInsertID = false
 
 	// Override SQL statements with MSSQL-specific versions
-	// MSSQL requires complete boolean expressions (1 = @p2 instead of just @p2)
-	dialect.GetCurrentSQL = fmt.Sprintf(mssqlListSQL, "")
-	dialect.ListRevisionStartSQL = fmt.Sprintf(mssqlListSQL, "AND mkv.id <= @p3")
-	dialect.GetRevisionAfterSQL = fmt.Sprintf(mssqlListSQL, mssqlIdOfKey)
+	// MSSQL requires complete boolean expressions (1 = ? instead of just ?)
+	// Use q() to convert ? to @p1, @p2... ensuring parameter order matches generic.go
+	dialect.GetCurrentSQL = q(fmt.Sprintf(mssqlListSQL, ""))
+	dialect.ListRevisionStartSQL = q(fmt.Sprintf(mssqlListSQL, "AND mkv.id <= ?"))
+	dialect.GetRevisionAfterSQL = q(fmt.Sprintf(mssqlListSQL, mssqlIdOfKey))
 
 	// CountSQL: MSSQL doesn't allow ORDER BY in subqueries without TOP/OFFSET
 	// Also requires explicit column alias for the scalar subquery
-	dialect.CountSQL = fmt.Sprintf(`
+	dialect.CountSQL = q(fmt.Sprintf(`
 		SELECT (%s) AS id, COUNT(c.theid)
 		FROM (
 			%s
-		) c`, revSQL, mssqlCountInnerSQL)
+		) c`, revSQL, mssqlCountInnerSQL))
 
-	// AfterSQL: MSSQL requires explicit column aliases for scalar subqueries
-	dialect.AfterSQL = fmt.Sprintf(`
+	dialect.AfterSQL = q(fmt.Sprintf(`
 		SELECT (%s) AS id, (%s) AS compact_revision, %s
 		FROM kine AS kv
 		WHERE
-			kv.name LIKE @p1 AND
-			kv.id > @p2
-		ORDER BY kv.id ASC`, revSQL, compactRevSQL, columns)
+			kv.name LIKE ? AND
+			kv.id > ?
+		ORDER BY kv.id ASC`, revSQL, compactRevSQL, columns))
 
 	dialect.GetSizeSQL = `
 		SELECT SUM(reserved_page_count) * 8 * 1024
 		FROM sys.dm_db_partition_stats
 		WHERE object_id = OBJECT_ID('kine')`
-	dialect.CompactSQL = `
+	dialect.CompactSQL = q(`
 		DELETE kv FROM kine AS kv
 		INNER JOIN (
 			SELECT kp.prev_revision AS id
@@ -166,27 +180,27 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 			WHERE
 				kp.name != 'compact_rev_key' AND
 				kp.prev_revision != 0 AND
-				kp.id <= @p1
+				kp.id <= ?
 			UNION
 			SELECT kd.id AS id
 			FROM kine AS kd
 			WHERE
 				kd.deleted != 0 AND
-				kd.id <= @p2
+				kd.id <= ?
 		) AS ks
-		ON kv.id = ks.id`
-	dialect.InsertSQL = `
+		ON kv.id = ks.id`)
+	dialect.InsertSQL = q(`
 		INSERT INTO kine(name, created, deleted, create_revision, prev_revision, lease, value, old_value)
 		OUTPUT INSERTED.id
-		VALUES(@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8)`
-	dialect.FillSQL = `
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)`)
+	dialect.FillSQL = q(`
 		SET IDENTITY_INSERT kine ON;
 		INSERT INTO kine(id, name, created, deleted, create_revision, prev_revision, lease, value, old_value)
-		VALUES(@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9);
-		SET IDENTITY_INSERT kine OFF`
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
+		SET IDENTITY_INSERT kine OFF`)
 	dialect.FillRetryDuration = time.Millisecond * 5
 	// MSSQL doesn't support DELETE FROM table AS alias syntax
-	dialect.DeleteSQL = `DELETE FROM kine WHERE id = @p1`
+	dialect.DeleteSQL = q(`DELETE FROM kine WHERE id = ?`)
 	// MSSQL uses OFFSET...FETCH instead of LIMIT
 	dialect.LimitSQL = func(sql string, limit int64) string {
 		return fmt.Sprintf("%s OFFSET 0 ROWS FETCH NEXT %d ROWS ONLY", sql, limit)
