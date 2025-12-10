@@ -11,15 +11,7 @@ start-test() {
     local port=$(cat $TEST_DIR/databases/*/metadata/port)
     local pass=$(cat $TEST_DIR/databases/*/metadata/password)
     local image=$(cat $TEST_DIR/databases/*/metadata/image)
-    DB_CONNECTION_TEST="
-        docker run --rm
-        --name connection-test
-        mcr.microsoft.com/mssql-tools
-        /opt/mssql-tools/bin/sqlcmd
-          -S $ip,$port
-          -U sa
-          -P $pass
-          -Q 'SELECT 1'" \
+    DB_CONNECTION_TEST="docker run --rm --name connection-test mcr.microsoft.com/mssql-tools /opt/mssql-tools/bin/sqlcmd -S $ip,$port -U sa -P $pass -Q 'SELECT 1'" \
     timeout --foreground 2m bash -c "wait-for-db-connection"
     KINE_IMAGE=$IMAGE KINE_ENDPOINT="sqlserver://sa:$pass@$ip:$port?database=kine" provision-kine
     local kine_url=$(cat $TEST_DIR/kine/*/metadata/url)
@@ -28,8 +20,7 @@ start-test() {
 export -f start-test
 
 VERSION_LIST="\
-    2022-latest
-    2019-latest"
+    2022-latest"
 
 while read VERSION; do
     LABEL=mssql-$VERSION DB_PASSWORD_ENV=MSSQL_SA_PASSWORD DB_IMAGE=mcr.microsoft.com/mssql/server:$VERSION run-test

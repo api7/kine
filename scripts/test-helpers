@@ -156,7 +156,7 @@ wait-for-db-connection() {
         echo 'DB_CONNECTION_TEST is not defined' >&2
         return 1
     fi
-    while ! $DB_CONNECTION_TEST 2>/dev/null; do
+    while ! eval "$DB_CONNECTION_TEST"; do
         echo 'Waiting for database to become available...' >&2
         sleep 5
     done
@@ -271,7 +271,7 @@ provision-database() {
     echo $DB_IMAGE > $TEST_DIR/databases/$count/metadata/image
     local testID=$(basename $TEST_DIR)
     local name=$(echo "database-$count-$testID" | tee $TEST_DIR/databases/$count/metadata/name)
-    local pass=$(echo "$RANDOM$RANDOM$RANDOM" | tee $TEST_DIR/databases/$count/metadata/password)
+    local pass=$(echo "YourStrong@Passw0rd" | tee $TEST_DIR/databases/$count/metadata/password)
     while [[ "$#" -gt "0" ]]; do
       echo $1 >> $TEST_DIR/databases/$count/metadata/env
       shift
