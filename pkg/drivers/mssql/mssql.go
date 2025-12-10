@@ -25,13 +25,9 @@ const (
 	defaultDSN = "sqlserver://sa@localhost:1433?database=kubernetes"
 )
 
-// MSSQL-specific SQL templates
-// and doesn't allow ORDER BY in subqueries without TOP/OFFSET
 var (
 	columns = "kv.id AS theid, kv.name, kv.created, kv.deleted, kv.create_revision, kv.prev_revision, kv.lease, kv.value, kv.old_value"
 
-	// MSSQL requires explicit column aliases for scalar subqueries in derived tables
-	// The alias must be specified at the outer SELECT level, not inside the subquery
 	revSQL = `SELECT MAX(rkv.id) FROM kine AS rkv`
 
 	compactRevSQL = `SELECT MAX(crkv.prev_revision) FROM kine AS crkv WHERE crkv.name = 'compact_rev_key'`
@@ -145,9 +141,7 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 
 	dialect.LastInsertID = false
 
-	// Override SQL statements with MSSQL-specific versions
 	// MSSQL requires complete boolean expressions (1 = ? instead of just ?)
-	// Use q() to convert ? to @p1, @p2... ensuring parameter order matches generic.go
 	dialect.GetCurrentSQL = q(fmt.Sprintf(mssqlListSQL, ""))
 	dialect.ListRevisionStartSQL = q(fmt.Sprintf(mssqlListSQL, "AND mkv.id <= ?"))
 	dialect.GetRevisionAfterSQL = q(fmt.Sprintf(mssqlListSQL, mssqlIdOfKey))
