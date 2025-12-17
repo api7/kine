@@ -428,7 +428,7 @@ func (d *Generic) applyLimit(sql string, limit int64) string {
 }
 
 func (d *Generic) Fill(ctx context.Context, revision int64) error {
-	_, err := d.execute(ctx, d.FillSQL, revision, fmt.Sprintf("gap-%d", revision), 0, 1, 0, 0, 0, nil, nil)
+	_, err := d.execute(ctx, d.FillSQL, revision, fmt.Sprintf("gap-%d", revision), 0, 1, 0, 0, 0, []byte(nil), []byte(nil))
 	return err
 }
 
