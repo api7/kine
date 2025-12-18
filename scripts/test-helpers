@@ -156,7 +156,20 @@ wait-for-db-connection() {
         echo 'DB_CONNECTION_TEST is not defined' >&2
         return 1
     fi
-    while ! $DB_CONNECTION_TEST 2>/dev/null; do
+
+    while true; do
+        if [ "$DB_USE_EVAL" = "true" ]; then
+            # fix mssql error: Sqlcmd: '1'': Unexpected argument. Enter '-?' for help.
+            eval "$DB_CONNECTION_TEST" >/dev/null 2>&1
+        else
+            $DB_CONNECTION_TEST >/dev/null 2>&1
+        fi
+
+        if [ $? -eq 0 ]; then
+            echo "Database is up!" >&2
+            return 0
+        fi
+
         echo 'Waiting for database to become available...' >&2
         sleep 5
     done
@@ -271,7 +284,7 @@ provision-database() {
     echo $DB_IMAGE > $TEST_DIR/databases/$count/metadata/image
     local testID=$(basename $TEST_DIR)
     local name=$(echo "database-$count-$testID" | tee $TEST_DIR/databases/$count/metadata/name)
-    local pass=$(echo "$RANDOM$RANDOM$RANDOM" | tee $TEST_DIR/databases/$count/metadata/password)
+    local pass=$(echo "YourStrong@Passw0rd" | tee $TEST_DIR/databases/$count/metadata/password)
     while [[ "$#" -gt "0" ]]; do
       echo $1 >> $TEST_DIR/databases/$count/metadata/env
       shift

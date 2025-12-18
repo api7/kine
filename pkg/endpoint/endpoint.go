@@ -9,6 +9,7 @@ import (
 
 	"github.com/k3s-io/kine/pkg/drivers/dqlite"
 	"github.com/k3s-io/kine/pkg/drivers/generic"
+	"github.com/k3s-io/kine/pkg/drivers/mssql"
 	"github.com/k3s-io/kine/pkg/drivers/mysql"
 	"github.com/k3s-io/kine/pkg/drivers/nats"
 	"github.com/k3s-io/kine/pkg/drivers/panwei"
@@ -36,6 +37,7 @@ const (
 	MySQLBackend     = "mysql"
 	PostgresBackend  = "postgres"
 	PanweiBackend    = "panweidb"
+	MSSQLBackend     = "sqlserver"
 )
 
 type Config struct {
@@ -220,6 +222,8 @@ func getKineStorageBackend(ctx context.Context, driver, dsn string, cfg Config) 
 		backend, err = panwei.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
 	case MySQLBackend:
 		backend, err = mysql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+	case MSSQLBackend:
+		backend, err = mssql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
 	case JetStreamBackend:
 		backend, err = nats.NewLegacy(ctx, dsn, cfg.BackendTLSConfig)
 	case NATSBackend:

@@ -15,7 +15,7 @@ import (
 
 const (
 	compactInterval  = 5 * time.Minute
-	compactTimeout   = 5 * time.Second
+	compactTimeout   = 60 * time.Second
 	compactMinRetain = 1000
 	compactBatchSize = 1000
 	pollBatchSize    = 500
@@ -73,7 +73,13 @@ func (s *SQLLog) compactStart(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer t.MustRollback()
+	defer func() {
+		if err := t.Rollback(); err != nil {
+			if err != sql.ErrTxDone {
+				logrus.Errorf("Transaction rollback failed: %v", err)
+			}
+		}
+	}()
 
 	// this is to work around a bug in which we ended up with two compact_rev_key rows
 	maxRev := int64(0)
@@ -221,7 +227,9 @@ func (s *SQLLog) compact(compactRev int64, targetCompactRev int64) (int64, int64
 		return compactRev, targetCompactRev, errors.Wrap(err, "failed to record compact revision")
 	}
 
-	t.MustCommit()
+	if err := t.Commit(); err != nil {
+		return compactRev, targetCompactRev, errors.Wrap(err, "failed to commit transaction")
+	}
 	logrus.Infof("COMPACT deleted %d rows from %d revisions in %s - compacted to %d/%d", deletedRows, (targetCompactRev - compactRev), time.Since(start), targetCompactRev, currentRev)
 
 	return targetCompactRev, currentRev, nil
