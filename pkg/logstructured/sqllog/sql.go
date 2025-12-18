@@ -73,7 +73,13 @@ func (s *SQLLog) compactStart(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer t.MustRollback()
+	defer func() {
+		if err := t.Rollback(); err != nil {
+			if err != sql.ErrTxDone {
+				logrus.Errorf("Transaction rollback failed: %v", err)
+			}
+		}
+	}()
 
 	// this is to work around a bug in which we ended up with two compact_rev_key rows
 	maxRev := int64(0)
