@@ -63,6 +63,35 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	if err != nil {
 		return nil, err
 	}
+	configureDialect(dialect)
+
+	if err := setup(dialect.DB); err != nil {
+		return nil, err
+	}
+
+	dialect.Migrate(context.Background())
+	return logstructured.New(sqllog.New(dialect)), nil
+}
+
+// NewWithDB creates a PostgreSQL backend using an externally managed *sql.DB,
+// skipping DSN parsing and database auto-creation. The caller is responsible
+// for the lifecycle of the provided connection.
+func NewWithDB(db *sql.DB, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
+	dialect, err := generic.OpenWithDB(db, connPoolConfig, "$", true, metricsRegisterer, "pgx")
+	if err != nil {
+		return nil, err
+	}
+	configureDialect(dialect)
+
+	if err := setup(dialect.DB); err != nil {
+		return nil, err
+	}
+
+	dialect.Migrate(context.Background())
+	return logstructured.New(sqllog.New(dialect)), nil
+}
+
+func configureDialect(dialect *generic.Generic) {
 	dialect.GetSizeSQL = `SELECT pg_total_relation_size('kine')`
 	dialect.CompactSQL = `
 		DELETE FROM kine AS kv
@@ -103,13 +132,6 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 		}
 		return err.Error()
 	}
-
-	if err := setup(dialect.DB); err != nil {
-		return nil, err
-	}
-
-	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), nil
 }
 
 func setup(db *sql.DB) error {

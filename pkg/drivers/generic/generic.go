@@ -223,7 +223,17 @@ func Open(ctx context.Context, driverName, dataSourceName string, connPoolConfig
 		case <-time.After(time.Second):
 		}
 	}
+	if err != nil {
+		return nil, err
+	}
 
+	return OpenWithDB(db, connPoolConfig, paramCharacter, numbered, metricsRegisterer, driverName)
+}
+
+// OpenWithDB initializes a Generic dialect using an externally provided *sql.DB,
+// skipping the internal openAndTest retry loop. This allows callers that manage
+// their own database connections (e.g. with credential rotation) to inject them.
+func OpenWithDB(db *sql.DB, connPoolConfig ConnectionPoolConfig, paramCharacter string, numbered bool, metricsRegisterer prometheus.Registerer, driverName string) (*Generic, error) {
 	configureConnectionPooling(connPoolConfig, db, driverName)
 
 	if metricsRegisterer != nil {
@@ -279,7 +289,7 @@ func Open(ctx context.Context, driverName, dataSourceName string, connPoolConfig
 
 		FillSQL: q(`INSERT INTO kine(id, name, created, deleted, create_revision, prev_revision, lease, value, old_value)
 			values(?, ?, ?, ?, ?, ?, ?, ?, ?)`, paramCharacter, numbered),
-	}, err
+	}, nil
 }
 
 func (d *Generic) query(ctx context.Context, sql string, args ...interface{}) (result *sql.Rows, err error) {

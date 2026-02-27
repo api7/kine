@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"os"
@@ -48,6 +49,7 @@ type Config struct {
 	ServerTLSConfig      tls.Config
 	BackendTLSConfig     tls.Config
 	MetricsRegisterer    prometheus.Registerer
+	DB                   *sql.DB // optional: externally managed DB connection (skips internal sql.Open)
 }
 
 type ETCDConfig struct {
@@ -205,6 +207,16 @@ func grpcServer(config Config) (*grpc.Server, error) {
 // indicating whether the backend requires leader election, and a suitable
 // backend datastore connection.
 func getKineStorageBackend(ctx context.Context, driver, dsn string, cfg Config) (bool, server.Backend, error) {
+	if cfg.DB != nil {
+		switch driver {
+		case PostgresBackend:
+			backend, err := pgsql.NewWithDB(cfg.DB, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+			return true, backend, err
+		default:
+			return false, nil, fmt.Errorf("external DB injection is only supported for postgres backend")
+		}
+	}
+
 	var (
 		backend     server.Backend
 		leaderElect = true
