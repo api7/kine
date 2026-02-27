@@ -223,6 +223,9 @@ func Open(ctx context.Context, driverName, dataSourceName string, connPoolConfig
 		case <-time.After(time.Second):
 		}
 	}
+	if err != nil {
+		return nil, err
+	}
 
 	return OpenWithDB(db, connPoolConfig, paramCharacter, numbered, metricsRegisterer, driverName)
 }
