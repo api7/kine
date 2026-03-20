@@ -64,17 +64,6 @@ func Listen(ctx context.Context, config Config) (ETCDConfig, error) {
 	driver, dsn := ParseStorageEndpoint(config.Endpoint)
 
 	if config.PollInterval == 0 {
-		if v := os.Getenv("KINE_POLL_INTERVAL"); v != "" {
-			if d, err := time.ParseDuration(v); err != nil {
-				logrus.Warnf("invalid KINE_POLL_INTERVAL %q: %v; using default", v, err)
-			} else if d > 0 {
-				config.PollInterval = d
-			} else {
-				logrus.Warnf("non-positive KINE_POLL_INTERVAL %q; using default", v)
-			}
-		}
-	}
-	if config.PollInterval == 0 {
 		config.PollInterval = time.Second
 	}
 
