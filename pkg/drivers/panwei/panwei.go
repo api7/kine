@@ -41,7 +41,7 @@ var (
 	}
 )
 
-func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
+func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, error) {
 	parsedDSN, err := prepareDSN(dataSourceName, tlsInfo)
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	}
 
 	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), nil
+	return logstructured.New(sqllog.New(dialect, pollInterval)), nil
 }
 
 func setup(db *sql.DB) error {

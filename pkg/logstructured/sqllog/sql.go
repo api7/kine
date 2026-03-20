@@ -22,16 +22,21 @@ const (
 )
 
 type SQLLog struct {
-	d           server.Dialect
-	broadcaster broadcaster.Broadcaster
-	ctx         context.Context
-	notify      chan int64
+	d            server.Dialect
+	broadcaster  broadcaster.Broadcaster
+	ctx          context.Context
+	notify       chan int64
+	pollInterval time.Duration
 }
 
-func New(d server.Dialect) *SQLLog {
+func New(d server.Dialect, pollInterval time.Duration) *SQLLog {
+	if pollInterval <= 0 {
+		pollInterval = time.Second
+	}
 	l := &SQLLog{
-		d:      d,
-		notify: make(chan int64, 1024),
+		d:            d,
+		notify:       make(chan int64, 1024),
+		pollInterval: pollInterval,
 	}
 	return l
 }
@@ -415,7 +420,7 @@ func (s *SQLLog) poll(result chan interface{}, pollStart int64) {
 		waitForMore = true
 	)
 
-	wait := time.NewTicker(time.Second)
+	wait := time.NewTicker(s.pollInterval)
 	defer wait.Stop()
 	defer close(result)
 

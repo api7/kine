@@ -47,12 +47,12 @@ var (
 	}
 )
 
-func New(ctx context.Context, dataSourceName string, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
-	backend, _, err := NewVariant(ctx, "sqlite3", dataSourceName, connPoolConfig, metricsRegisterer)
+func New(ctx context.Context, dataSourceName string, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, error) {
+	backend, _, err := NewVariant(ctx, "sqlite3", dataSourceName, connPoolConfig, metricsRegisterer, pollInterval)
 	return backend, err
 }
 
-func NewVariant(ctx context.Context, driverName, dataSourceName string, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, *generic.Generic, error) {
+func NewVariant(ctx context.Context, driverName, dataSourceName string, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, *generic.Generic, error) {
 	if dataSourceName == "" {
 		if err := os.MkdirAll("./db", 0700); err != nil {
 			return nil, nil, err
@@ -121,7 +121,7 @@ func NewVariant(ctx context.Context, driverName, dataSourceName string, connPool
 	}
 
 	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), dialect, nil
+	return logstructured.New(sqllog.New(dialect, pollInterval)), dialect, nil
 }
 
 func setup(db *sql.DB) error {

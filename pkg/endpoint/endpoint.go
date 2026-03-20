@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/k3s-io/kine/pkg/drivers/dqlite"
 	"github.com/k3s-io/kine/pkg/drivers/generic"
@@ -50,6 +51,7 @@ type Config struct {
 	BackendTLSConfig     tls.Config
 	MetricsRegisterer    prometheus.Registerer
 	DB                   *sql.DB // optional: externally managed DB connection (skips internal sql.Open)
+	PollInterval         time.Duration
 }
 
 type ETCDConfig struct {
@@ -60,6 +62,11 @@ type ETCDConfig struct {
 
 func Listen(ctx context.Context, config Config) (ETCDConfig, error) {
 	driver, dsn := ParseStorageEndpoint(config.Endpoint)
+
+	if config.PollInterval == 0 {
+		config.PollInterval = time.Second
+	}
+
 	if driver == ETCDBackend {
 		return ETCDConfig{
 			Endpoints:   strings.Split(config.Endpoint, ","),
@@ -210,7 +217,7 @@ func getKineStorageBackend(ctx context.Context, driver, dsn string, cfg Config) 
 	if cfg.DB != nil {
 		switch driver {
 		case PostgresBackend:
-			backend, err := pgsql.NewWithDB(cfg.DB, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+			backend, err := pgsql.NewWithDB(cfg.DB, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 			return true, backend, err
 		default:
 			return false, nil, fmt.Errorf("external DB injection is only supported for postgres backend")
@@ -225,17 +232,17 @@ func getKineStorageBackend(ctx context.Context, driver, dsn string, cfg Config) 
 	switch driver {
 	case SQLiteBackend:
 		leaderElect = false
-		backend, err = sqlite.New(ctx, dsn, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = sqlite.New(ctx, dsn, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case DQLiteBackend:
-		backend, err = dqlite.New(ctx, dsn, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = dqlite.New(ctx, dsn, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case PostgresBackend:
-		backend, err = pgsql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = pgsql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case PanweiBackend:
-		backend, err = panwei.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = panwei.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case MySQLBackend:
-		backend, err = mysql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = mysql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case MSSQLBackend:
-		backend, err = mssql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer)
+		backend, err = mssql.New(ctx, dsn, cfg.BackendTLSConfig, cfg.ConnectionPoolConfig, cfg.MetricsRegisterer, cfg.PollInterval)
 	case JetStreamBackend:
 		backend, err = nats.NewLegacy(ctx, dsn, cfg.BackendTLSConfig)
 	case NATSBackend:
