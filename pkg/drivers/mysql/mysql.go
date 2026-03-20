@@ -5,6 +5,7 @@ import (
 	cryptotls "crypto/tls"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,7 +48,7 @@ var (
 	createDB = "CREATE DATABASE IF NOT EXISTS "
 )
 
-func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
+func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, error) {
 	tlsConfig, err := tlsInfo.ClientConfig()
 	if err != nil {
 		return nil, err
@@ -113,7 +114,7 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	}
 
 	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), nil
+	return logstructured.New(sqllog.New(dialect, pollInterval)), nil
 }
 
 func setup(db *sql.DB) error {

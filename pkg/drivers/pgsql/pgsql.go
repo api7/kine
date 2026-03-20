@@ -49,7 +49,7 @@ var (
 	createDB = "CREATE DATABASE "
 )
 
-func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
+func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, error) {
 	parsedDSN, err := prepareDSN(dataSourceName, tlsInfo)
 	if err != nil {
 		return nil, err
@@ -70,13 +70,13 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 	}
 
 	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), nil
+	return logstructured.New(sqllog.New(dialect, pollInterval)), nil
 }
 
 // NewWithDB creates a PostgreSQL backend using an externally managed *sql.DB,
 // skipping DSN parsing and database auto-creation. The caller is responsible
 // for the lifecycle of the provided connection.
-func NewWithDB(db *sql.DB, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer) (server.Backend, error) {
+func NewWithDB(db *sql.DB, connPoolConfig generic.ConnectionPoolConfig, metricsRegisterer prometheus.Registerer, pollInterval time.Duration) (server.Backend, error) {
 	dialect, err := generic.OpenWithDB(db, connPoolConfig, "$", true, metricsRegisterer, "pgx")
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func NewWithDB(db *sql.DB, connPoolConfig generic.ConnectionPoolConfig, metricsR
 	}
 
 	dialect.Migrate(context.Background())
-	return logstructured.New(sqllog.New(dialect)), nil
+	return logstructured.New(sqllog.New(dialect, pollInterval)), nil
 }
 
 func configureDialect(dialect *generic.Generic) {
