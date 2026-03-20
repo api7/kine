@@ -65,8 +65,12 @@ func Listen(ctx context.Context, config Config) (ETCDConfig, error) {
 
 	if config.PollInterval == 0 {
 		if v := os.Getenv("KINE_POLL_INTERVAL"); v != "" {
-			if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			if d, err := time.ParseDuration(v); err != nil {
+				logrus.Warnf("invalid KINE_POLL_INTERVAL %q: %v; using default", v, err)
+			} else if d > 0 {
 				config.PollInterval = d
+			} else {
+				logrus.Warnf("non-positive KINE_POLL_INTERVAL %q; using default", v)
 			}
 		}
 	}
