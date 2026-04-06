@@ -154,13 +154,18 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 			%s
 		) c`, revSQL, mssqlCountInnerSQL))
 
+	// Use NOLOCK hint to avoid lock contention with concurrent writes.
+	// The poll query runs every ~1s; any missed rows from dirty reads
+	// will be caught in the next iteration.
+	nolockRevSQL := `SELECT MAX(rkv.id) FROM kine AS rkv WITH (NOLOCK)`
+	nolockCompactRevSQL := `SELECT MAX(crkv.prev_revision) FROM kine AS crkv WITH (NOLOCK) WHERE crkv.name = 'compact_rev_key'`
 	dialect.AfterSQL = q(fmt.Sprintf(`
 		SELECT (%s) AS id, (%s) AS compact_revision, %s
-		FROM kine AS kv
+		FROM kine AS kv WITH (NOLOCK)
 		WHERE
 			kv.name LIKE ? AND
 			kv.id > ?
-		ORDER BY kv.id ASC`, revSQL, compactRevSQL, columns))
+		ORDER BY kv.id ASC`, nolockRevSQL, nolockCompactRevSQL, columns))
 
 	dialect.GetSizeSQL = `
 		SELECT SUM(reserved_page_count) * 8 * 1024

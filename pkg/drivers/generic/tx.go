@@ -3,6 +3,7 @@ package generic
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/k3s-io/kine/pkg/metrics"
@@ -49,7 +50,11 @@ func (t *Tx) Rollback() error {
 
 func (t *Tx) MustRollback() {
 	if err := t.Rollback(); err != nil {
-		if err != sql.ErrTxDone {
+		if err != sql.ErrTxDone &&
+			// MSSQL auto-rolls back transactions on serialization failures or
+			// deadlocks; a subsequent Rollback() returns this driver-specific
+			// error instead of sql.ErrTxDone.
+			!strings.Contains(err.Error(), "no corresponding BEGIN TRANSACTION") {
 			logrus.Fatalf("Transaction rollback failed: %v", err)
 		}
 	}
