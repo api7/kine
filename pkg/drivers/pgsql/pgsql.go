@@ -139,7 +139,23 @@ func setup(db *sql.DB) error {
 
 	for _, stmt := range schema {
 		logrus.Tracef("SETUP EXEC : %v", util.Stripped(stmt))
-		_, err := db.Exec(stmt)
+		var err error
+		// Retry index creation to work around a known PostgreSQL race
+		// where CREATE INDEX IF NOT EXISTS can fail with a duplicate-key
+		// error on pg_class when concurrent sessions (or background
+		// processes) touch the same catalog entries.
+		for attempt := 0; attempt < 3; attempt++ {
+			_, err = db.Exec(stmt)
+			if err == nil {
+				break
+			}
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.UniqueViolation && strings.Contains(pgErr.ConstraintName, "pg_class") {
+				logrus.Warnf("SETUP EXEC attempt %d hit pg_class race, retrying: %v", attempt+1, err)
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			return err
+		}
 		if err != nil {
 			return err
 		}

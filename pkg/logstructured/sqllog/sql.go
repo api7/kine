@@ -17,7 +17,11 @@ const (
 	compactInterval  = 5 * time.Minute
 	compactTimeout   = 60 * time.Second
 	compactMinRetain = 1000
-	compactBatchSize = 1000
+	// Use smaller batches to reduce lock contention on MSSQL, where
+	// SERIALIZABLE DELETE transactions can block other queries for the
+	// entire batch duration.  100 revisions per batch keeps each
+	// transaction under ~1 s even on slow backends.
+	compactBatchSize = 100
 	pollBatchSize    = 500
 )
 
@@ -166,6 +170,10 @@ outer:
 				metrics.CompactTotal.WithLabelValues(metrics.ResultError).Inc()
 				continue outer
 			}
+
+			// Yield briefly between batches so that other queries blocked
+			// by SERIALIZABLE locks can make progress.
+			time.Sleep(50 * time.Millisecond)
 		}
 
 		if err := s.postCompact(); err != nil {
