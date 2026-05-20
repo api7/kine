@@ -75,15 +75,23 @@ func TestTTLEventsWatchStartsAtCurrentListRevision(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	ch := l.ttlEvents(ctx)
 	var events []*server.Event
-	for event := range l.ttlEvents(ctx) {
-		events = append(events, event)
-	}
-
-	if len(events) != 1 {
-		t.Fatalf("expected one TTL event from list, got %d", len(events))
-	}
-	if log.afterRevision != 9 {
-		t.Fatalf("expected watch After revision 9, got %d", log.afterRevision)
+	for {
+		select {
+		case event, ok := <-ch:
+			if !ok {
+				if len(events) != 1 {
+					t.Fatalf("expected one TTL event from list, got %d", len(events))
+				}
+				if log.afterRevision != 9 {
+					t.Fatalf("expected watch After revision 9, got %d", log.afterRevision)
+				}
+				return
+			}
+			events = append(events, event)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
 	}
 }
