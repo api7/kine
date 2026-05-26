@@ -15,8 +15,9 @@ import (
 var _ server.Transaction = (*Tx)(nil)
 
 type Tx struct {
-	x *sql.Tx
-	d *Generic
+	x      *sql.Tx
+	d      *Generic
+	closed bool
 }
 
 func (d *Generic) BeginTx(ctx context.Context, opts *sql.TxOptions) (server.Transaction, error) {
@@ -33,7 +34,11 @@ func (d *Generic) BeginTx(ctx context.Context, opts *sql.TxOptions) (server.Tran
 
 func (t *Tx) Commit() error {
 	logrus.Tracef("TX COMMIT")
-	return t.x.Commit()
+	err := t.x.Commit()
+	if err == nil {
+		t.closed = true
+	}
+	return err
 }
 
 func (t *Tx) MustCommit() {
@@ -44,7 +49,14 @@ func (t *Tx) MustCommit() {
 
 func (t *Tx) Rollback() error {
 	logrus.Tracef("TX ROLLBACK")
-	return t.x.Rollback()
+	if t.closed {
+		return sql.ErrTxDone
+	}
+	err := t.x.Rollback()
+	if err == nil || err == sql.ErrTxDone {
+		t.closed = true
+	}
+	return err
 }
 
 func (t *Tx) MustRollback() {
