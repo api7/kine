@@ -13,7 +13,11 @@ func TestTxRollbackAfterCommitIsNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("failed to close db: %v", err)
+		}
+	})
 
 	g := &Generic{DB: db}
 	tx, err := g.BeginTx(context.Background(), nil)
@@ -33,7 +37,11 @@ func TestTxRollbackAfterRollbackIsNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("failed to close db: %v", err)
+		}
+	})
 
 	g := &Generic{DB: db}
 	tx, err := g.BeginTx(context.Background(), nil)
