@@ -53,6 +53,10 @@ func (t *Tx) Rollback() error {
 		return sql.ErrTxDone
 	}
 	err := t.x.Rollback()
+	if err != nil && err != sql.ErrTxDone && t.d.TxClosedErr != nil && t.d.TxClosedErr(err) {
+		logrus.Warnf("TX ROLLBACK skipped, transaction already terminated by the server: %v", err)
+		err = sql.ErrTxDone
+	}
 	if err == nil || err == sql.ErrTxDone {
 		t.closed = true
 	}
