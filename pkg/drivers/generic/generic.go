@@ -95,6 +95,11 @@ type TranslateErr func(error) error
 type ErrCode func(error) string
 type LimitSQL func(sql string, limit int64) string
 
+// TxClosedErr reports whether the error means the server already terminated
+// the transaction (e.g. aborted as a deadlock or serialization victim), so a
+// client-side ROLLBACK has nothing to roll back.
+type TxClosedErr func(error) bool
+
 type ConnectionPoolConfig struct {
 	MaxIdle     int // zero means defaultMaxIdleConns; negative means 0
 	MaxIdleTime time.Duration
@@ -127,6 +132,7 @@ type Generic struct {
 	InsertRetry           ErrRetry
 	TranslateErr          TranslateErr
 	ErrCode               ErrCode
+	TxClosedErr           TxClosedErr
 	FillRetryDuration     time.Duration
 	LimitSQL              LimitSQL
 }

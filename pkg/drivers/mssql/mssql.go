@@ -228,6 +228,15 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 		}
 		return err.Error()
 	}
+	dialect.TxClosedErr = func(err error) bool {
+		if mssqlErr, ok := err.(mssql.Error); ok {
+			// 3903 = The ROLLBACK TRANSACTION request has no corresponding
+			// BEGIN TRANSACTION. Returned when the server already aborted
+			// the transaction, e.g. as a deadlock victim under load.
+			return mssqlErr.Number == 3903
+		}
+		return false
+	}
 
 	if err := setup(dialect.DB); err != nil {
 		return nil, err
