@@ -133,6 +133,10 @@ type Generic struct {
 	TranslateErr          TranslateErr
 	ErrCode               ErrCode
 	TxClosedErr           TxClosedErr
+	// ResetIsolationSQL, when set, runs on a transaction's pinned connection
+	// after the transaction finishes and before the connection returns to the
+	// pool, for engines whose isolation level is session-scoped (SQL Server).
+	ResetIsolationSQL     string
 	FillRetryDuration     time.Duration
 	LimitSQL              LimitSQL
 }
