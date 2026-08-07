@@ -228,6 +228,13 @@ func New(ctx context.Context, dataSourceName string, tlsInfo tls.Config, connPoo
 		}
 		return err.Error()
 	}
+	// SQL Server's SET TRANSACTION ISOLATION LEVEL is session-scoped: the
+	// SERIALIZABLE level set by compaction transactions survives the commit
+	// and turns every later query on that pooled connection into a
+	// range-locking serializable read (bypassing READ_COMMITTED_SNAPSHOT and
+	// deadlocking with concurrent inserts). Reset it before the connection is
+	// returned to the pool.
+	dialect.ResetIsolationSQL = "SET TRANSACTION ISOLATION LEVEL READ COMMITTED"
 	dialect.TxClosedErr = func(err error) bool {
 		if mssqlErr, ok := err.(mssql.Error); ok {
 			// 3903 = The ROLLBACK TRANSACTION request has no corresponding
