@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"time"
 
 	"github.com/k3s-io/kine/pkg/metrics"
@@ -36,7 +37,9 @@ func (d *Generic) BeginTx(ctx context.Context, opts *sql.TxOptions) (server.Tran
 	}
 	x, err := conn.BeginTx(ctx, opts)
 	if err != nil {
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			logrus.Warnf("TX BEGIN: releasing pinned connection failed: %v", closeErr)
+		}
 		return nil, err
 	}
 	return &Tx{
@@ -61,12 +64,18 @@ func (t *Tx) releaseConn() {
 		defer cancel()
 		if _, err := conn.ExecContext(ctx, t.d.ResetIsolationSQL); err != nil {
 			logrus.Warnf("TX release: isolation reset failed, discarding connection: %v", err)
-			_ = conn.Raw(func(interface{}) error { return driver.ErrBadConn })
-			_ = conn.Close()
+			// Raw returning driver.ErrBadConn marks the sql.Conn done and
+			// destroys the underlying connection, so no Close follows (it
+			// would only return sql.ErrConnDone).
+			if rawErr := conn.Raw(func(interface{}) error { return driver.ErrBadConn }); !errors.Is(rawErr, driver.ErrBadConn) {
+				logrus.Warnf("TX release: discarding connection failed: %v", rawErr)
+			}
 			return
 		}
 	}
-	_ = conn.Close()
+	if err := conn.Close(); err != nil {
+		logrus.Warnf("TX release: returning connection to the pool failed: %v", err)
+	}
 }
 
 func (t *Tx) Commit() error {
