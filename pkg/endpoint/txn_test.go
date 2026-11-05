@@ -232,7 +232,7 @@ func TestMultiKeyTxnConcurrentCompareAndSwap(t *testing.T) {
 	mustPut(t, cli, k1, "0")
 	mustPut(t, cli, k2, "0")
 
-	const workers, increments = 4, 5
+	const workers, increments = 8, 10
 	var wg sync.WaitGroup
 	errc := make(chan error, workers)
 	for w := 0; w < workers; w++ {
