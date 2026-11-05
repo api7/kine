@@ -250,8 +250,16 @@ func TestMultiKeyTxnConcurrentCompareAndSwap(t *testing.T) {
 					errc <- err
 					return
 				}
-				n1, _ := strconv.Atoi(string(g1.Kvs[0].Value))
-				n2, _ := strconv.Atoi(string(g2.Kvs[0].Value))
+				n1, err := strconv.Atoi(string(g1.Kvs[0].Value))
+				if err != nil {
+					errc <- err
+					return
+				}
+				n2, err := strconv.Atoi(string(g2.Kvs[0].Value))
+				if err != nil {
+					errc <- err
+					return
+				}
 				put, err := cli.Txn(ctx).
 					If(
 						clientv3.Compare(clientv3.ModRevision(k1), "=", g1.Kvs[0].ModRevision),

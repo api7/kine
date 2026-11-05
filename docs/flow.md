@@ -39,7 +39,9 @@ compares may test the mod or create revision of those keys, and the failure bran
 read those keys. All writes are applied in one SQL transaction, in request order, each at its
 own revision, so watchers see one event per write. A concurrent write to any of the keys is
 caught by the `(name, prev_revision)` unique index; the transaction is then rolled back and
-re-evaluated against fresh state. Range deletes, nested transactions and writes in the failure
+re-evaluated against fresh state. Deleting a key that does not exist writes no row, so a
+concurrent creation of that key is not detected; the transaction then behaves as if it ran
+before the creation. Range deletes, nested transactions and writes in the failure
 branch are rejected.
 
 ### Flow Diagram
