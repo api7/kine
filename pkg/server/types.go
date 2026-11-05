@@ -62,6 +62,8 @@ type Transaction interface {
 	GetRevision(ctx context.Context, revision int64) (*sql.Rows, error)
 	DeleteRevision(ctx context.Context, revision int64) error
 	CurrentRevision(ctx context.Context) (int64, error)
+	ListCurrent(ctx context.Context, prefix string, limit int64, includeDeleted bool) (*sql.Rows, error)
+	Insert(ctx context.Context, key string, create, delete bool, createRevision, previousRevision int64, ttl int64, value, prevValue []byte) (int64, error)
 }
 
 type KeyValue struct {

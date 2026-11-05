@@ -167,6 +167,40 @@ func (t *Tx) CurrentRevision(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+func (t *Tx) ListCurrent(ctx context.Context, prefix string, limit int64, includeDeleted bool) (*sql.Rows, error) {
+	sql := t.d.GetCurrentSQL
+	if limit > 0 {
+		sql = t.d.applyLimit(sql, limit)
+	}
+	return t.query(ctx, sql, prefix, includeDeleted)
+}
+
+// Insert writes one row inside the transaction. Unlike Generic.Insert it does
+// not retry: a failed statement aborts the transaction on some engines, so the
+// caller retries the whole transaction instead.
+func (t *Tx) Insert(ctx context.Context, key string, create, delete bool, createRevision, previousRevision int64, ttl int64, value, prevValue []byte) (id int64, err error) {
+	logrus.Tracef("TX INSERT %s", key)
+	if t.d.TranslateErr != nil {
+		defer func() {
+			if err != nil {
+				err = t.d.TranslateErr(err)
+			}
+		}()
+	}
+
+	cVal, dVal := boolToInt(create), boolToInt(delete)
+	if t.d.LastInsertID {
+		res, err := t.execute(ctx, t.d.InsertLastInsertIDSQL, key, cVal, dVal, createRevision, previousRevision, ttl, value, prevValue)
+		if err != nil {
+			return 0, err
+		}
+		return res.LastInsertId()
+	}
+
+	err = t.queryRow(ctx, t.d.InsertSQL, key, cVal, dVal, createRevision, previousRevision, ttl, value, prevValue).Scan(&id)
+	return id, err
+}
+
 func (t *Tx) query(ctx context.Context, sql string, args ...interface{}) (result *sql.Rows, err error) {
 	logrus.Tracef("TX QUERY %v : %s", args, util.Stripped(sql))
 	startTime := time.Now()
