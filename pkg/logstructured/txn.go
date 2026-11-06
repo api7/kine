@@ -2,6 +2,7 @@ package logstructured
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sirupsen/logrus"
 
@@ -40,26 +41,23 @@ func (l *LogStructured) Txn(ctx context.Context, ops []server.TxnOp, guard func(
 	}
 
 	err := txnLog.Txn(ctx, func(tx LogTx) error {
+		latest, rev, err := readSnapshot(ctx, tx, ops)
+		if err != nil {
+			return err
+		}
 		res = server.TxnResult{
 			Current:   make([]*server.KeyValue, len(ops)),
 			Revisions: make([]int64, len(ops)),
+			Revision:  rev,
 		}
-		latest := make([]*server.Event, len(ops))
-		for i, op := range ops {
-			event, err := tx.Latest(ctx, op.Key)
-			if err != nil {
-				return err
-			}
-			latest[i] = event
+		for i, event := range latest {
 			if event != nil && !event.Delete {
 				res.Current[i] = event.KV
 			}
 		}
 
 		if !guard(res.Current) {
-			rev, err := tx.CurrentRevision(ctx)
-			res.Revision = rev
-			return err
+			return nil
 		}
 
 		// The events mirror the ones Create, Update and Delete append for a
@@ -110,15 +108,71 @@ func (l *LogStructured) Txn(ctx context.Context, ops []server.TxnOp, guard func(
 		}
 
 		res.Succeeded = true
-		if res.Revision == 0 {
-			rev, err := tx.CurrentRevision(ctx)
-			res.Revision = rev
-			return err
-		}
 		return nil
 	})
 	if err != nil {
 		return server.TxnResult{}, err
 	}
 	return res, nil
+}
+
+// errSnapshotChanged makes TxnLog.Txn run the transaction again.
+var errSnapshotChanged = errors.New("keys changed while the txn read them")
+
+// TxnReadHook, when set, is called after each key read in Txn. It is a test
+// hook for interleaving concurrent writes and must stay nil otherwise.
+var TxnReadHook func(key string)
+
+// readSnapshot returns the latest event of every op key, all as of one moment,
+// and a revision at that moment.
+//
+// The keys are read with separate statements, and a database at READ
+// COMMITTED can commit between them. Pinning a revision and reading
+// "id <= rev" does not help: ids are assigned at insert time, so a transaction
+// holding lower ids can commit after the revision is read. Instead the keys are
+// read twice. A key's latest event only ever moves forward, so a key that is
+// the same in both passes was unchanged from its first read to its second,
+// and every key was unchanged between the end of the first pass and the start
+// of the second. The revision is read in that window.
+func readSnapshot(ctx context.Context, tx LogTx, ops []server.TxnOp) ([]*server.Event, int64, error) {
+	read := func() ([]*server.Event, error) {
+		events := make([]*server.Event, len(ops))
+		for i, op := range ops {
+			event, err := tx.Latest(ctx, op.Key)
+			if err != nil {
+				return nil, err
+			}
+			events[i] = event
+			if TxnReadHook != nil {
+				TxnReadHook(op.Key)
+			}
+		}
+		return events, nil
+	}
+
+	first, err := read()
+	if err != nil {
+		return nil, 0, err
+	}
+	rev, err := tx.CurrentRevision(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	second, err := read()
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range first {
+		if eventRevision(first[i]) != eventRevision(second[i]) {
+			return nil, 0, errSnapshotChanged
+		}
+	}
+	return first, rev, nil
+}
+
+func eventRevision(event *server.Event) int64 {
+	if event == nil {
+		return 0
+	}
+	return event.KV.ModRevision
 }

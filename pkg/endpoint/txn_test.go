@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/k3s-io/kine/pkg/endpoint"
+	"github.com/k3s-io/kine/pkg/logstructured"
 )
 
 // newClient starts kine on KINE_TEST_ENDPOINT (an empty SQLite database when
@@ -327,5 +329,109 @@ func TestMultiKeyTxnRejectsUnsupportedShapes(t *testing.T) {
 
 	if kv := mustGet(t, cli, a); kv != nil {
 		t.Fatalf("rejected txns wrote %s: %v", a, kv)
+	}
+}
+
+// interleaveCommit makes the next multi-key txn run commit right after it reads
+// its first key, so the commit lands between that txn's per-key reads. It
+// returns a function that reports whether commit ran.
+func interleaveCommit(t *testing.T, commit func()) func() bool {
+	t.Helper()
+	var fired atomic.Bool
+	logstructured.TxnReadHook = func(string) {
+		if fired.CompareAndSwap(false, true) {
+			commit()
+		}
+	}
+	t.Cleanup(func() { logstructured.TxnReadHook = nil })
+	return fired.Load
+}
+
+// The database only ever holds a=0,b=0 or a=1,b=1, so the failure reads must
+// return one of those pairs, at a header revision that includes both.
+func TestMultiKeyTxnFailureReadsOneSnapshot(t *testing.T) {
+	cli, prefix := newClient(t)
+	ctx := context.Background()
+
+	a, b := prefix+"a", prefix+"b"
+	revA, revB := mustPut(t, cli, a, "0"), mustPut(t, cli, b, "0")
+
+	fired := interleaveCommit(t, func() {
+		resp, err := cli.Txn(ctx).
+			If(
+				clientv3.Compare(clientv3.ModRevision(a), "=", revA),
+				clientv3.Compare(clientv3.ModRevision(b), "=", revB),
+			).
+			Then(clientv3.OpPut(a, "1"), clientv3.OpPut(b, "1")).
+			Commit()
+		if err != nil || !resp.Succeeded {
+			t.Errorf("concurrent commit: resp=%v err=%v", resp, err)
+		}
+	})
+
+	resp, err := cli.Txn(ctx).
+		If(clientv3.Compare(clientv3.CreateRevision(a), "=", 0)).
+		Then(clientv3.OpPut(a, "x"), clientv3.OpPut(b, "x")).
+		Else(clientv3.OpGet(a), clientv3.OpGet(b)).
+		Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fired() {
+		t.Fatal("the concurrent commit did not run")
+	}
+	if resp.Succeeded || len(resp.Responses) != 2 {
+		t.Fatalf("unexpected response: %v", resp)
+	}
+	gotA := resp.Responses[0].GetResponseRange().Kvs[0]
+	gotB := resp.Responses[1].GetResponseRange().Kvs[0]
+	if string(gotA.Value) != string(gotB.Value) {
+		t.Fatalf("failure reads mix two states: %s=%s, %s=%s", a, gotA.Value, b, gotB.Value)
+	}
+	if resp.Header.Revision < gotA.ModRevision || resp.Header.Revision < gotB.ModRevision {
+		t.Fatalf("header revision %d is older than the reads (%d, %d)", resp.Header.Revision, gotA.ModRevision, gotB.ModRevision)
+	}
+}
+
+// The compares hold only on a mix of the state before and after the concurrent
+// commit (a absent, b already updated), so the txn must fail.
+func TestMultiKeyTxnComparesOneSnapshot(t *testing.T) {
+	cli, prefix := newClient(t)
+	ctx := context.Background()
+
+	a, b := prefix+"a", prefix+"b"
+	revB := mustPut(t, cli, b, "0")
+
+	fired := interleaveCommit(t, func() {
+		resp, err := cli.Txn(ctx).
+			If(
+				clientv3.Compare(clientv3.CreateRevision(a), "=", 0),
+				clientv3.Compare(clientv3.ModRevision(b), "=", revB),
+			).
+			Then(clientv3.OpPut(a, "1"), clientv3.OpPut(b, "1")).
+			Commit()
+		if err != nil || !resp.Succeeded {
+			t.Errorf("concurrent commit: resp=%v err=%v", resp, err)
+		}
+	})
+
+	resp, err := cli.Txn(ctx).
+		If(
+			clientv3.Compare(clientv3.CreateRevision(a), "=", 0),
+			clientv3.Compare(clientv3.ModRevision(b), ">", revB),
+		).
+		Then(clientv3.OpDelete(a), clientv3.OpPut(b, "x")).
+		Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fired() {
+		t.Fatal("the concurrent commit did not run")
+	}
+	if resp.Succeeded {
+		t.Fatalf("compares passed on a mixed state: %v", resp)
+	}
+	if v := string(mustGet(t, cli, b).Value); v != "1" {
+		t.Fatalf("%s = %s, want 1", b, v)
 	}
 }

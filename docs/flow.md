@@ -37,7 +37,9 @@ Besides the single-key create, update and delete shapes, a transaction may write
 atomically. The success branch is a list of puts and single-key deletes on distinct keys, the
 compares may test the mod or create revision of those keys, and the failure branch may only
 read those keys. All writes are applied in one SQL transaction, in request order, each at its
-own revision, so watchers see one event per write. A concurrent write to any of the keys is
+own revision, so watchers see one event per write. The compares and failure reads are
+evaluated on one consistent view of the keys: they are read twice, and the transaction is
+re-run if any of them changed in between. A concurrent write to any of the keys is
 caught by the `(name, prev_revision)` unique index; the transaction is then rolled back and
 re-evaluated against fresh state. Deleting a key that does not exist writes no row, so a
 concurrent creation of that key is not detected; the transaction then behaves as if it ran
