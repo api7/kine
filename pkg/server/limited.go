@@ -37,7 +37,7 @@ func (l *LimitedServer) Txn(ctx context.Context, txn *etcdserverpb.TxnRequest) (
 	if isCompact(txn) {
 		return l.compact(ctx)
 	}
-	return nil, ErrNotSupported
+	return l.multiKeyTxn(ctx, txn)
 }
 
 type ResponseHeader struct {

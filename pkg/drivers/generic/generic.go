@@ -465,14 +465,7 @@ func (d *Generic) Insert(ctx context.Context, key string, create, delete bool, c
 		}()
 	}
 
-	cVal := 0
-	dVal := 0
-	if create {
-		cVal = 1
-	}
-	if delete {
-		dVal = 1
-	}
+	cVal, dVal := boolToInt(create), boolToInt(delete)
 
 	if d.LastInsertID {
 		row, err := d.execute(ctx, d.InsertLastInsertIDSQL, key, cVal, dVal, createRevision, previousRevision, ttl, value, prevValue)
@@ -498,6 +491,13 @@ func (d *Generic) Insert(ctx context.Context, key string, create, delete bool, c
 		return id, err
 	}
 	return
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (d *Generic) GetSize(ctx context.Context) (int64, error) {

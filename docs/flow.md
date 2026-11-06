@@ -31,6 +31,21 @@ queue future removal of any keys that have a TTL. The TTL is checked again when 
 dequeued, and the current TTL checked to see if removal is still due; if not it is rescheduled.
 
 
+### Multi-key Transactions
+
+Besides the single-key create, update and delete shapes, a transaction may write several keys
+atomically. The success branch is a list of puts and single-key deletes on distinct keys, the
+compares may test the mod or create revision of those keys, and the failure branch may only
+read those keys. All writes are applied in one SQL transaction, in request order, each at its
+own revision, so watchers see one event per write. The compares and failure reads are
+evaluated on one consistent view of the keys: they are read twice, and the transaction is
+re-run if any of them changed in between. A concurrent write to any of the keys is
+caught by the `(name, prev_revision)` unique index; the transaction is then rolled back and
+re-evaluated against fresh state. Deleting a key that does not exist writes no row, so a
+concurrent creation of that key is not detected; the transaction then behaves as if it ran
+before the creation. Range deletes, nested transactions and writes in the failure
+branch are rejected.
+
 ### Flow Diagram
 
 ```mermaid
