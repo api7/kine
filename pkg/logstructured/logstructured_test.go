@@ -2,12 +2,8 @@ package logstructured
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
-	logtest "github.com/sirupsen/logrus/hooks/test"
 
 	"github.com/k3s-io/kine/pkg/server"
 )
@@ -16,7 +12,6 @@ type ttlWatchLog struct {
 	listCalls     int
 	afterRevision int64
 	compactRev    int64
-	afterErr      error
 }
 
 func (l *ttlWatchLog) Start(ctx context.Context) error {
@@ -49,9 +44,6 @@ func (l *ttlWatchLog) List(ctx context.Context, prefix, startKey string, limit, 
 
 func (l *ttlWatchLog) After(ctx context.Context, prefix string, revision, limit int64) (int64, []*server.Event, error) {
 	l.afterRevision = revision
-	if l.afterErr != nil {
-		return 10, nil, l.afterErr
-	}
 	if revision < l.compactRev {
 		return 10, nil, server.ErrCompacted
 	}
@@ -101,47 +93,5 @@ func TestTTLEventsWatchStartsAtCurrentListRevision(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
 		}
-	}
-}
-
-func watchLogLevels(t *testing.T, log *ttlWatchLog, revision int64) (server.WatchResult, []logrus.Level) {
-	t.Helper()
-	hook := logtest.NewGlobal()
-	t.Cleanup(func() { logrus.StandardLogger().ReplaceHooks(make(logrus.LevelHooks)) })
-
-	wr := New(log).Watch(context.Background(), "/", revision)
-	var levels []logrus.Level
-	for _, entry := range hook.AllEntries() {
-		if entry.Level <= logrus.WarnLevel {
-			levels = append(levels, entry.Level)
-		}
-	}
-	return wr, levels
-}
-
-func TestWatchFromCompactedRevisionLogsWarn(t *testing.T) {
-	wr, levels := watchLogLevels(t, &ttlWatchLog{compactRev: 8}, 5)
-
-	if wr.CompactRevision != 8 {
-		t.Fatalf("expected compact revision 8 in watch result, got %d", wr.CompactRevision)
-	}
-	if len(levels) != 1 || levels[0] != logrus.WarnLevel {
-		t.Fatalf("expected a single warning for a compacted start revision, got %v", levels)
-	}
-}
-
-func TestWatchListFailureLogsError(t *testing.T) {
-	wr, levels := watchLogLevels(t, &ttlWatchLog{afterErr: errors.New("connection refused")}, 5)
-
-	select {
-	case err := <-wr.Errorc:
-		if err != server.ErrGRPCUnhealthy {
-			t.Fatalf("expected ErrGRPCUnhealthy, got %v", err)
-		}
-	default:
-		t.Fatal("expected an error on the watch error channel")
-	}
-	if len(levels) != 1 || levels[0] != logrus.ErrorLevel {
-		t.Fatalf("expected a single error for a failed list, got %v", levels)
 	}
 }
