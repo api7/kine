@@ -2,6 +2,7 @@ package logstructured
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -442,12 +443,14 @@ func (l *LogStructured) Watch(ctx context.Context, prefix string, revision int64
 
 	rev, kvs, err := l.log.After(ctx, prefix, revision, 0)
 	if err != nil {
-		logrus.Errorf("Failed to list %s for revision %d: %v", prefix, revision, err)
-		if err == server.ErrCompacted {
+		if errors.Is(err, server.ErrCompacted) {
+			// The client is told the compact revision and recovers by re-listing.
+			logrus.Warnf("Failed to list %s for revision %d: %v", prefix, revision, err)
 			compact, _ := l.log.CompactRevision(ctx)
 			wr.CompactRevision = compact
 			wr.CurrentRevision = rev
 		} else {
+			logrus.Errorf("Failed to list %s for revision %d: %v", prefix, revision, err)
 			errorc <- server.ErrGRPCUnhealthy
 		}
 		cancel()

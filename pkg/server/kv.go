@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -50,7 +51,11 @@ func (k *KVServerBridge) Range(ctx context.Context, r *etcdserverpb.RangeRequest
 
 	resp, err := k.limited.Range(ctx, r)
 	if err != nil {
-		logrus.Errorf("error while range on %s %s: %v", r.Key, r.RangeEnd, err)
+		if errors.Is(err, ErrCompacted) {
+			logrus.Warnf("error while range on %s %s: %v", r.Key, r.RangeEnd, err)
+		} else {
+			logrus.Errorf("error while range on %s %s: %v", r.Key, r.RangeEnd, err)
+		}
 		return nil, err
 	}
 
